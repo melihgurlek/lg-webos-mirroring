@@ -89,6 +89,19 @@ With Moonlight set to 1080p60, 30 Mbps, H.264 and the SMP decoder, the stream is
 - **Pairing survives a reinstall if `conf/` is restored.** Moonlight's pairing is just `conf/key/{client.pem,key.pem,uniqueid.dat}`, and Sunshine still trusts that cert. `ares-push`/`ares-pull` are disabled for TV devices, so the script moves a tarball through `ares-novacom --run` as base64. Strip the `[Info] Set target device` line it prints on stdout first. Tested: uninstall Moonlight, one click, and it streams again in about 16 s with no PIN.
 - If the session does expire, Developer Mode may have to be switched back on in the TV app before anything can reinstall Moonlight. The start script then shows a notification asking for that.
 
+## 4. Windows (same laptop, dual boot)
+
+The laptop also boots Windows 11, and `scripts/windows/` ports the setup to it. Notes:
+
+- **Two Sunshine identities, on purpose.** Windows Sunshine has its own `uniqueid` and pairing, and shows up in Moonlight as "Laptop (Windows)" next to the Linux "Laptop". The one that isn't booted shows offline. Launch params pick the host by `host_uuid`, so each OS's script opens the right one.
+- **A fresh Sunshine install only saves its `uniqueid` on the first pairing.** Until then it picks a new one on each restart, so a host entry added before pairing goes stale.
+- **Encoder:** the internal panel runs through the AMD iGPU, so NVENC reports "not supported on this GPU" and Sunshine uses `h264_amf`/`hevc_amf` by itself. No config is needed.
+- **Cold start takes about 28 s,** in two fixed pauses inside Sunshine's display-device code (8 s, then 16 s before the display-config query). Neither `adapter_name` nor `encoder` changes it. By default the script stops Sunshine on stop, as on Linux. With `KEEP_SUNSHINE=1` it stays running (about 45 MB, idle), and later starts take about 6 s.
+- **Client-cert TLS:** Windows `curl.exe` uses Schannel and can't load Moonlight's PEM key, so `/applist` is fetched in .NET with the key imported into a temporary CAPI container (`PROV_RSA_AES`, so TLS 1.2 can sign SHA-256).
+- **ares on Windows:** the npm `.cmd` shims go through cmd.exe, which has an 8 KB command-line limit and its own quoting rules. The script calls `node bin/ares-*.js` directly, so the base64 restore command fits.
+- **Turkish locale:** case-insensitive `-match '[A-Z]'` fails on a capital `I` (it lowercases to dotless ı), so config parsing uses `-cmatch`.
+- **The TV IP changed** from .108 to .92 between sessions. A DHCP reservation would avoid this; see Open items.
+
 ## Open items
 
 - The TV's IP is assigned by DHCP. Reserve it in the router so the `ares` device config stays valid.
