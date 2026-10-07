@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>tvmirror</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  video { position: fixed; left: 0; top: 0; width: 100%; height: 100%; background: #000; }
+  #status { position: fixed; left: 20px; bottom: 20px; color: #aaa; font: 18px sans-serif;
+            background: rgba(0,0,0,.6); padding: 6px 12px; border-radius: 4px; }
+  #status.hidden { display: none; }
+</style>
+</head>
+<body>
+<video id="v" muted autoplay></video>
+<div id="status">Connecting... (press OK for fullscreen)</div>
+<script>
+// Runs in the TV's Chrome 38 browser: ES5 only.
+function param(name, def) {
+  var m = new RegExp('[?&]' + name + '=([^&]*)').exec(location.search);
+  return m ? parseFloat(m[1]) : def;
+}
+var TARGET_LAG = param('target', 0.5);   // seconds behind live edge we aim for
+var MAX_LAG = param('max', 1.5);         // jump to live edge beyond this (a visible skip)
+var CATCHUP_RATE = param('rate', 1.05);   // playbackRate while lag > 2x target (1 = off)
+var v = document.getElementById('v');
+var statusEl = document.getElementById('status');
+var ws = null, sb = null, queue = [];
+var stats = { seeks: 0, waiting: 0, rateUps: 0 };
+v.addEventListener('waiting', function () { stats.waiting++; });
+
+function setStatus(text, hide) {
+  statusEl.textContent = text;
+  statusEl.className = hide ? 'hidden' : '';
+}
+
+function goFullscreen() {
+  var el = document.documentElement;
+  var fn = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen;
+  if (fn) { try { fn.call(el); } catch (e) {} }
+}
+document.addEventListener('keydown', goFullscreen);
+document.addEventListener('click', goFullscreen);
+
+function pump() {
+  if (!sb || sb.updating || !queue.length) return;
+  try {
+    sb.appendBuffer(queue.shift());
+  } catch (e) {
+    report('append error: ' + e.name);
+    if (e.name === 'QuotaExceededError') trim(true);
+  }
+}
+
+function trim(force) {
+  var b = v.buffered;
+  if (!sb || sb.updating || !b.length) return;
+  var keepFrom = v.currentTime - (force ? 2 : 10);
+  if (keepFrom - b.start(0) > (force ? 0 : 20)) sb.remove(b.start(0), keepFrom);
+}
+
+function report(msg) {
+  if (ws && ws.readyState === 1) ws.send(msg);
+}
+
+function start() {
+  var ms = new MediaSource();
+  v.src = URL.createObjectURL(ms);
+  ms.addEventListener('sourceopen', function () {
+    ws = new WebSocket('ws://' + location.host + '/ws');
+    ws.binaryType = 'arraybuffer';
+    ws.onmessage = function (e) {
+      if (typeof e.data === 'string') {
+        sb = ms.addSourceBuffer('video/mp4; codecs="' + e.data + '"');
+        sb.addEventListener('updateend', pump);
+        return;
+      }
+      queue.push(e.data);
+      pump();
+    };
+    ws.onclose = function () {
+      setStatus('Disconnected, retrying...');
+      setTimeout(function () { location.reload(); }, 1500);
+    };
+    ws.onopen = function () { report('params target=' + TARGET_LAG + ' max=' + MAX_LAG + ' rate=' + CATCHUP_RATE); };
+  });
+  v.addEventListener('error', function () {
+    report('video error ' + (v.error && v.error.code));
+    setTimeout(function () { location.reload(); }, 1500);
+  });
+}
+
+var lastReport = 0;
+setInterval(function () {
+  var b = v.buffered;
+  if (!b.length) return;
+  var end = b.end(b.length - 1);
+  var lag = end - v.currentTime;
+  if (v.currentTime < b.start(b.length - 1) || lag > MAX_LAG) {
+    v.currentTime = Math.max(b.start(b.length - 1), end - TARGET_LAG);
+    stats.seeks++;
+  } else if (lag > TARGET_LAG * 2) {
+    if (v.playbackRate !== CATCHUP_RATE) stats.rateUps++;
+    v.playbackRate = CATCHUP_RATE;   // gently catch up
+  } else {
+    v.playbackRate = 1.0;
+  }
+  if (v.paused) v.play();
+  if (v.readyState >= 2) setStatus('', true);
+  trim(false);
+  var now = Date.now();
+  if (now - lastReport > param('every', 5) * 1000) {
+    lastReport = now;
+    var q = v.getVideoPlaybackQuality ? v.getVideoPlaybackQuality() : null;
+    report('lag=' + lag.toFixed(3) + 's buffered=' + (end - b.start(0)).toFixed(1) +
+           's decoded=' + (v.webkitDecodedFrameCount || (q && q.totalVideoFrames) || '?') +
+           ' dropped=' + (v.webkitDroppedFrameCount || (q && q.droppedVideoFrames) || 0) +
+           ' queue=' + queue.length + ' seeks=' + stats.seeks + ' waiting=' + stats.waiting +
+           ' rateUps=' + stats.rateUps + ' t=' + v.currentTime.toFixed(2));
+  }
+}, 200);
+
+goFullscreen();
+start();
+</script>
+</body>
+</html>
