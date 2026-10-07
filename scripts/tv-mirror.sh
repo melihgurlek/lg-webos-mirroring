@@ -51,6 +51,27 @@ for port in (9, 7):
 EOF
 }
 
+# DHCP can give the TV a new IP (e.g. after it was off past its lease). Find it by its MAC:
+# check the neighbour table, ping the /24 to fill it if needed, then repoint the ares device.
+locate_tv() {
+    [ -n "${TV_MAC:-}" ] || return 1
+    local mac=${TV_MAC,,} ip pfx i
+    neigh_ips() { ip -4 neigh show | awk -v m="$mac" 'tolower($5) == m { print $1 }'; }
+    for ip in $(neigh_ips); do ping -c1 -W1 "$ip" >/dev/null 2>&1 && break; ip=""; done
+    if [ -z "$ip" ]; then
+        pfx=$(ip -4 route get 1.1.1.1 2>/dev/null | grep -oP '(?<=src )\d+\.\d+\.\d+') || return 1
+        for i in $(seq 254); do ping -c1 -W1 "$pfx.$i" >/dev/null 2>&1 & done
+        wait
+        for ip in $(neigh_ips); do ping -c1 -W1 "$ip" >/dev/null 2>&1 && break; ip=""; done
+    fi
+    [ -n "$ip" ] || return 1
+    if [ "$ip" != "$tv_ip" ]; then
+        ares-setup-device -m "$DEVICE" -i "host=$ip" </dev/null >/dev/null 2>&1 ||
+            say "The TV is now at $ip but updating the '$DEVICE' device failed."
+        tv_ip=$ip
+    fi
+}
+
 host_uuid() {  # Sunshine's GameStream unique id; it answers a few seconds after starting
     for _ in $(seq 15); do
         id=$(curl -s --max-time 2 http://localhost:47989/serverinfo | grep -oP '(?<=<uniqueid>)[^<]+')
@@ -98,11 +119,15 @@ start() {
     say "Starting…"
     systemctl --user start "$SUNSHINE" || fail "Couldn't start Sunshine."
 
-    if ! tv_up; then
+    if ! tv_up && ! locate_tv; then
         [ -n "${TV_MAC:-}" ] || fail "The TV is off. Turn it on with the remote and click again."
         say "Turning the TV on…"
         wake "$TV_MAC"
-        for _ in $(seq 60); do tv_up && break; sleep 1; done
+        for i in $(seq 60); do
+            tv_up && break
+            (( i % 10 == 0 )) && locate_tv && break  # it may come back on a new IP
+            sleep 1
+        done
         tv_up || fail "The TV didn't wake up. Turn it on with the remote and click again."
     fi
 

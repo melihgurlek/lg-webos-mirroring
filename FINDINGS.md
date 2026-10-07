@@ -100,8 +100,8 @@ The laptop also boots Windows 11, and `scripts/windows/` ports the setup to it. 
 - **Client-cert TLS:** Windows `curl.exe` uses Schannel and can't load Moonlight's PEM key, so `/applist` is fetched in .NET with the key imported into a temporary CAPI container (`PROV_RSA_AES`, so TLS 1.2 can sign SHA-256).
 - **ares on Windows:** the npm `.cmd` shims go through cmd.exe, which has an 8 KB command-line limit and its own quoting rules. The script calls `node bin/ares-*.js` directly, so the base64 restore command fits.
 - **Turkish locale:** case-insensitive `-match '[A-Z]'` fails on a capital `I` (it lowercases to dotless ı), so config parsing uses `-cmatch`.
-- **The TV IP changed** from .108 to .92 between sessions. A DHCP reservation would avoid this; see Open items.
+- **The TV IP changed** from .108 to .92 between sessions. The router's leases are short (this laptop's had under 2 h left), so a TV left off for a few hours can come back on a new IP. When the saved IP doesn't answer, the start scripts now look up the TV's wired MAC in the neighbour table, ping the /24 to fill it if needed (about 1 s), and repoint the `ares` device with `ares-setup-device -m <device> -i host=<ip>`.
 
 ## Open items
 
-- The TV's IP is assigned by DHCP. Reserve it in the router so the `ares` device config stays valid.
+- The TV's IP is assigned by DHCP. The scripts follow it by MAC now, but a router reservation for `78:5D:C8:28:71:6E` would still save the lookup.

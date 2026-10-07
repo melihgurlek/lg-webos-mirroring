@@ -134,6 +134,39 @@ function Tv-Up {
     try { (New-Object Net.NetworkInformation.Ping).Send($tvIp, 1000).Status -eq 'Success' } catch { $false }
 }
 
+# DHCP can give the TV a new IP (e.g. after it was off past its lease). Find it by its MAC:
+# check the neighbour table, ping the /24 to fill it if needed, then repoint the ares device.
+function Locate-Tv {
+    if (-not $cfg.TV_MAC) { return $false }
+    $mac = $cfg.TV_MAC -replace '-', ':'
+    $find = {
+        Get-NetNeighbor -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { ($_.LinkLayerAddress -replace '-', ':') -eq $mac } |
+            ForEach-Object IPAddress |
+            Where-Object { try { (New-Object Net.NetworkInformation.Ping).Send($_, 1000).Status -eq 'Success' } catch { $false } } |
+            Select-Object -First 1
+    }
+    $ip = & $find
+    if (-not $ip) {
+        $route = Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Sort-Object RouteMetric | Select-Object -First 1
+        $own = if ($route) { Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $route.InterfaceIndex -ErrorAction SilentlyContinue | Select-Object -First 1 }
+        if (-not $own) { return $false }
+        $pfx = $own.IPAddress -replace '\.\d+$', ''
+        $tasks = 1..254 | ForEach-Object { (New-Object Net.NetworkInformation.Ping).SendPingAsync("$pfx.$_", 1000) }
+        try { [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]$tasks) } catch {}
+        $ip = & $find
+    }
+    if (-not $ip) { return $false }
+    if ($ip -ne $script:tvIp) {
+        Log "TV moved from $($script:tvIp) to $ip"
+        if ((Ares 'ares-setup-device' @('-m', $cfg.DEVICE, '-i', "host=$ip") 30).Code -ne 0) {
+            Say "The TV is now at $ip but updating the '$($cfg.DEVICE)' device failed."
+        }
+        $script:tvIp = $ip
+    }
+    $true
+}
+
 function Wake([string]$mac) {
     $bytes = [byte[]]($mac -split '[:-]' | ForEach-Object { [Convert]::ToByte($_, 16) })
     $pkt = [byte[]](@(0xFF) * 6 + $bytes * 16)
@@ -287,11 +320,15 @@ function Start-Mirror {
     if (-not (Sunshine-Running)) { Fail "Couldn't start Sunshine." }
     Log 'sunshine started'
 
-    if (-not (Tv-Up)) {
+    if (-not (Tv-Up) -and -not (Locate-Tv)) {
         if (-not $cfg.TV_MAC) { Fail 'The TV is off. Turn it on with the remote and click again.' }
         Say 'Turning the TV on...'
         Wake $cfg.TV_MAC
-        for ($i = 0; $i -lt 60 -and -not (Tv-Up); $i++) { Start-Sleep 1 }
+        for ($i = 1; $i -le 60; $i++) {
+            if (Tv-Up) { break }
+            if ($i % 10 -eq 0 -and (Locate-Tv)) { break }  # it may come back on a new IP
+            Start-Sleep 1
+        }
         if (-not (Tv-Up)) { Fail "The TV didn't wake up. Turn it on with the remote and click again." }
     }
 
