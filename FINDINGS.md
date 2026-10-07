@@ -81,7 +81,12 @@ Pairing from the CLI: newer Sunshine builds need the request's `pairing_id` in `
 
 With Moonlight set to 1080p60, 30 Mbps, H.264 and the SMP decoder, the stream is smooth and sharp, has audio, and lags only slightly. The default bitrate (about 7.3 Mbps) noticeably softened desktop text.
 
+### Making it usable without a terminal
+
+- **Wake-on-LAN works over Ethernet** from standby: a magic packet to the TV's wired MAC brought it up in about 16 s, even though the Wi-Fi module is dead.
+- **The Developer Mode session token** is in `/var/luna/preferences/devmode_enabled` (64 alphanumeric chars). `GET https://developer.lge.com/secure/ResetDevModeSession.dev?sessionToken=<token>` returns `{"result":"success",...}` and resets the timer. It's a server-side call, so the TV doesn't need to be on, which is why it can run from GitHub Actions.
+- If the session does expire, Developer Mode may have to be switched back on in the TV app before anything can reinstall Moonlight. The start script then shows a notification asking for that.
+
 ## Open items
 
-- Developer Mode expires after about 50 h. It could be auto-extended from the laptop.
 - The TV's IP is assigned by DHCP. Reserve it in the router so the `ares` device config stays valid.

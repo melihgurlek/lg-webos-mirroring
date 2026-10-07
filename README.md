@@ -27,15 +27,34 @@ The diagnosis, the dead ends and the quirks are written up in [FINDINGS.md](FIND
    sudo dnf copr enable lizardbyte/stable && sudo dnf install Sunshine
    cp config/sunshine.conf ~/.config/sunshine/sunshine.conf
    sunshine --creds <user> <password>
-   systemctl --user enable --now app-dev.lizardbyte.app.Sunshine
    ```
+   Sunshine isn't autostarted: idle, it holds ~440 MB RAM and keeps the NVIDIA GPU awake. The desktop icons start and stop it.
 5. **Pair:** open Moonlight on the TV, select the laptop, then:
    ```sh
    SUNSHINE_USER=<user> SUNSHINE_PASS=<password> scripts/sunshine-pair.sh <PIN>
    ```
 6. **Moonlight settings:** 1080p, 60 FPS, 30 Mbps, H.264, decoder *webOS SMP*. Set the TV picture mode to *Game*.
 
-Developer Mode expires after about 50 hours unless you extend it in the Developer Mode app.
+## Everyday use: desktop icons
+
+```sh
+scripts/install-desktop-icons.sh moonlight.ipk <TV_MAC>
+```
+
+This adds **Mirror to TV** and **Stop Mirroring** to the desktop and app menu, so nobody needs a terminal.
+- **Mirror to TV** starts Sunshine and wakes the TV with Wake-on-LAN (this works over Ethernet when the TV is in standby). If Developer Mode expiry deleted Moonlight, it reinstalls it, then opens Moonlight. On the TV: pick the laptop, then *Desktop*.
+- **Stop Mirroring** closes Moonlight and stops Sunshine.
+
+## Keeping Developer Mode alive
+
+Developer Mode expires after about 50 hours, and the TV then deletes sideloaded apps. The session lives on LG's servers, so `.github/workflows/renew-devmode.yml` renews it every 12 h from GitHub Actions, even when the TV and laptop are off. Setup:
+
+```sh
+# the token file on the TV holds the Dev Mode session token
+OPENSSL_ENABLE_SHA1_SIGNATURES=1 ares-novacom -d lgtv --run "cat /var/luna/preferences/devmode_enabled" > token
+gh secret set LG_DEVMODE_TOKEN < token && rm token
+gh workflow run renew-devmode.yml
+```
 
 ## Repo layout
 
@@ -43,5 +62,7 @@ Developer Mode expires after about 50 hours unless you extend it in the Develope
 |---|---|
 | `config/sunshine.conf` | Sunshine config: KWin capture plus NVENC (hybrid AMD/NVIDIA laptop) |
 | `scripts/repack-moonlight-ipk.sh` | Adds writable `conf/` and `cache/` dirs so pairing survives power-off |
+| `scripts/tv-mirror-start.sh`, `tv-mirror-stop.sh` | One-click start/stop (installed by `install-desktop-icons.sh`) |
+| `.github/workflows/renew-devmode.yml` | Renews Developer Mode every 12 h |
 | `scripts/sunshine-pair.sh` | Submits a Moonlight PIN to Sunshine from the CLI |
 | `archived/browser-mirror/` | An earlier attempt that streams to the TV's built-in browser. Works, but has ~0.5 s+ lag and no audio |
