@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Install "Mirror to TV" / "Stop Mirroring" launchers (app menu + desktop) and stash the
-# Moonlight ipk the start script reinstalls from.
+# Install the "Mirror to TV" toggle launcher (app menu + desktop) and stash the Moonlight
+# ipk it reinstalls from.
 # Usage: install-desktop-icons.sh [moonlight_writable.ipk] [TV_MAC]
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -10,10 +10,15 @@ conf=${XDG_CONFIG_HOME:-$HOME/.config}/lg-mirror
 desktop=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
 
 mkdir -p "$bin" "$data/applications" "$data/lg-mirror" "$conf" "$desktop"
-install -m 755 "$here/tv-mirror-start.sh" "$bin/tv-mirror-start"
-install -m 755 "$here/tv-mirror-stop.sh" "$bin/tv-mirror-stop"
+install -m 755 "$here/tv-mirror.sh" "$bin/tv-mirror"
+# Remove the old separate start/stop launchers.
+rm -f "$bin"/tv-mirror-{start,stop} "$data/applications"/tv-mirror-{start,stop}.desktop "$desktop"/tv-mirror-{start,stop}.desktop
 [ -n "${1:-}" ] && install -m 644 "$1" "$data/lg-mirror/moonlight.ipk"
-[ -n "${2:-}" ] && echo "TV_MAC=$2" > "$conf/config"
+if [ -n "${2:-}" ]; then
+    touch "$conf/config"
+    sed -i '/^TV_MAC=/d' "$conf/config"
+    echo "TV_MAC=$2" >> "$conf/config"
+fi
 
 entry() {  # file name exec icon
     cat > "$1" <<EOF
@@ -28,11 +33,8 @@ EOF
     chmod +x "$1"
 }
 for dir in "$data/applications" "$desktop"; do
-    entry "$dir/tv-mirror-start.desktop" "Mirror to TV" "$bin/tv-mirror-start" video-television
-    entry "$dir/tv-mirror-stop.desktop" "Stop Mirroring" "$bin/tv-mirror-stop" media-playback-stop
+    entry "$dir/tv-mirror.desktop" "Mirror to TV" "$bin/tv-mirror" video-television
 done
 # KDE asks before running untrusted desktop-folder launchers; mark ours as trusted.
-for f in "$desktop"/tv-mirror-{start,stop}.desktop; do
-    gio set "$f" metadata::trusted true 2>/dev/null || true
-done
-echo "Installed. Look for 'Mirror to TV' on the desktop and in the app menu."
+gio set "$desktop/tv-mirror.desktop" metadata::trusted true 2>/dev/null || true
+echo "Installed. Click 'Mirror to TV' on the desktop or in the app menu to start, again to stop."

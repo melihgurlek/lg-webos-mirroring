@@ -28,22 +28,24 @@ The diagnosis, the dead ends and the quirks are written up in [FINDINGS.md](FIND
    cp config/sunshine.conf ~/.config/sunshine/sunshine.conf
    sunshine --creds <user> <password>
    ```
-   Sunshine isn't autostarted: idle, it holds ~440 MB RAM and keeps the NVIDIA GPU awake. The desktop icons start and stop it.
+   Sunshine isn't autostarted: idle, it holds ~440 MB RAM and keeps the NVIDIA GPU awake. The desktop icon starts and stops it.
 5. **Pair:** open Moonlight on the TV, select the laptop, then:
    ```sh
    SUNSHINE_USER=<user> SUNSHINE_PASS=<password> scripts/sunshine-pair.sh <PIN>
    ```
 6. **Moonlight settings:** 1080p, 60 FPS, 30 Mbps, H.264, decoder *webOS SMP*. Set the TV picture mode to *Game*.
 
-## Everyday use: desktop icons
+## Everyday use: one desktop icon
 
 ```sh
 scripts/install-desktop-icons.sh moonlight.ipk <TV_MAC>
 ```
 
-This adds **Mirror to TV** and **Stop Mirroring** to the desktop and app menu, so nobody needs a terminal.
-- **Mirror to TV** starts Sunshine and wakes the TV with Wake-on-LAN (this works over Ethernet when the TV is in standby). If Developer Mode expiry deleted Moonlight, it reinstalls it, then opens Moonlight. On the TV: pick the laptop, then *Desktop*.
-- **Stop Mirroring** closes Moonlight and stops Sunshine.
+This adds a **Mirror to TV** icon to the desktop and app menu, so nobody needs a terminal or the TV remote.
+- **Click once to start (~10 s).** It starts Sunshine and wakes the TV with Wake-on-LAN (this works over Ethernet when the TV is in standby). If Developer Mode expiry deleted Moonlight, it reinstalls it. Then it opens Moonlight with launch params (`{"host_uuid": …, "host_app_id": …}`), so the Desktop stream starts by itself.
+- **Click again to stop.** It closes Moonlight and stops Sunshine.
+
+If your Sunshine's Desktop app ID differs, set `APP_ID=` in `~/.config/lg-mirror/config` (see FINDINGS.md).
 
 ## Keeping Developer Mode alive
 
@@ -62,7 +64,7 @@ gh workflow run renew-devmode.yml
 |---|---|
 | `config/sunshine.conf` | Sunshine config: KWin capture plus NVENC (hybrid AMD/NVIDIA laptop) |
 | `scripts/repack-moonlight-ipk.sh` | Adds writable `conf/` and `cache/` dirs so pairing survives power-off |
-| `scripts/tv-mirror-start.sh`, `tv-mirror-stop.sh` | One-click start/stop (installed by `install-desktop-icons.sh`) |
+| `scripts/tv-mirror.sh` | One-click start/stop toggle (installed by `install-desktop-icons.sh`) |
 | `.github/workflows/renew-devmode.yml` | Renews Developer Mode every 12 h |
 | `scripts/sunshine-pair.sh` | Submits a Moonlight PIN to Sunshine from the CLI |
 | `archived/browser-mirror/` | An earlier attempt that streams to the TV's built-in browser. Works, but has ~0.5 s+ lag and no audio |
