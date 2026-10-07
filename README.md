@@ -42,10 +42,10 @@ scripts/install-desktop-icons.sh moonlight.ipk <TV_MAC>
 ```
 
 This adds a **Mirror to TV** icon to the desktop and app menu, so nobody needs a terminal or the TV remote.
-- **Click once to start (~10 s).** It starts Sunshine and wakes the TV with Wake-on-LAN (this works over Ethernet when the TV is in standby). If Developer Mode expiry deleted Moonlight, it reinstalls it. Then it opens Moonlight with launch params (`{"host_uuid": …, "host_app_id": …}`), so the Desktop stream starts by itself.
+- **Click once to start (~10 s).** It starts Sunshine and wakes the TV with Wake-on-LAN (this works over Ethernet when the TV is in standby). If Developer Mode expiry deleted Moonlight, it reinstalls it and restores the pairing and settings from a backup, so there's no new PIN. Then it opens Moonlight with launch params (`{"host_uuid": …, "host_app_id": …}`), so the Desktop stream starts by itself.
 - **Click again to stop.** It closes Moonlight and stops Sunshine.
 
-If your Sunshine's Desktop app ID differs, set `APP_ID=` in `~/.config/lg-mirror/config` (see FINDINGS.md).
+The launcher runs `scripts/tv-mirror.sh` straight from the repo, so re-run the installer if you move the repo. Moonlight's settings and keys are backed up to `~/.config/lg-mirror/moonlight-conf.tar.gz` on the first start (`tv-mirror backup` refreshes it). To stream a different Sunshine app, set `APP_NAME=` in `~/.config/lg-mirror/config`.
 
 ## Keeping Developer Mode alive
 
@@ -64,7 +64,7 @@ gh workflow run renew-devmode.yml
 |---|---|
 | `config/sunshine.conf` | Sunshine config: KWin capture plus NVENC (hybrid AMD/NVIDIA laptop) |
 | `scripts/repack-moonlight-ipk.sh` | Adds writable `conf/` and `cache/` dirs so pairing survives power-off |
-| `scripts/tv-mirror.sh` | One-click start/stop toggle (installed by `install-desktop-icons.sh`) |
+| `scripts/tv-mirror.sh` | One-click start/stop toggle; also `start`, `stop` and `backup` (linked by `install-desktop-icons.sh`) |
 | `.github/workflows/renew-devmode.yml` | Renews Developer Mode every 12 h |
 | `scripts/sunshine-pair.sh` | Submits a Moonlight PIN to Sunshine from the CLI |
 | `archived/browser-mirror/` | An earlier attempt that streams to the TV's built-in browser. Works, but has ~0.5 s+ lag and no audio |

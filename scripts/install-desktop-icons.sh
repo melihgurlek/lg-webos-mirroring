@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install the "Mirror to TV" toggle launcher (app menu + desktop) and stash the Moonlight
-# ipk it reinstalls from.
+# ipk it reinstalls from. The launcher runs scripts/tv-mirror.sh straight from this repo,
+# so edits and `git pull` apply immediately (moving the repo means re-running this).
 # Usage: install-desktop-icons.sh [moonlight_writable.ipk] [TV_MAC]
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -10,7 +11,9 @@ conf=${XDG_CONFIG_HOME:-$HOME/.config}/lg-mirror
 desktop=$(xdg-user-dir DESKTOP 2>/dev/null || echo "$HOME/Desktop")
 
 mkdir -p "$bin" "$data/applications" "$data/lg-mirror" "$conf" "$desktop"
-install -m 755 "$here/tv-mirror.sh" "$bin/tv-mirror"
+script=$here/tv-mirror.sh
+chmod +x "$script"
+ln -sfn "$script" "$bin/tv-mirror"   # for `tv-mirror stop` etc. in a terminal
 # Remove the old separate start/stop launchers.
 rm -f "$bin"/tv-mirror-{start,stop} "$data/applications"/tv-mirror-{start,stop}.desktop "$desktop"/tv-mirror-{start,stop}.desktop
 [ -n "${1:-}" ] && install -m 644 "$1" "$data/lg-mirror/moonlight.ipk"
@@ -33,7 +36,7 @@ EOF
     chmod +x "$1"
 }
 for dir in "$data/applications" "$desktop"; do
-    entry "$dir/tv-mirror.desktop" "Mirror to TV" "$bin/tv-mirror" video-television
+    entry "$dir/tv-mirror.desktop" "Mirror to TV" "$script" video-television
 done
 # KDE asks before running untrusted desktop-folder launchers; mark ours as trusted.
 gio set "$desktop/tv-mirror.desktop" metadata::trusted true 2>/dev/null || true
