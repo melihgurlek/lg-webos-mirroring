@@ -310,7 +310,8 @@ function Start-Mirror {
         Say 'Reinstalling Moonlight on the TV...'
         if ((Ares 'ares-install' @('-d', $cfg.DEVICE, $cfg.IPK) 180).Code -ne 0) { Fail 'Reinstalling Moonlight failed.' }
         if (-not (Restore-Conf)) { Say "Moonlight was reinstalled but its pairing couldn't be restored. Pair it again with the PIN shown on the TV." }
-    } elseif (-not (Test-Path $BACKUP)) {
+    } else {
+        # Refresh every time so a pairing made since (e.g. from Linux) isn't lost on a reinstall.
         $null = Backup-Conf
     }
 

@@ -119,7 +119,8 @@ start() {
         say "Reinstalling Moonlight on the TV…"
         ares-install -d "$DEVICE" "$IPK" >/dev/null 2>&1 || fail "Reinstalling Moonlight failed."
         restore_conf || say "Moonlight was reinstalled but its pairing couldn't be restored. Pair it again with the PIN shown on the TV."
-    elif [ ! -f "$BACKUP" ]; then
+    else
+        # Refresh every time so a pairing made since (e.g. from Windows) isn't lost on a reinstall.
         backup_conf
     fi
 

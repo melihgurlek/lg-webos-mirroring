@@ -45,7 +45,7 @@ This adds a **Mirror to TV** icon to the desktop and app menu, so nobody needs a
 - **Click once to start (~10 s).** It starts Sunshine and wakes the TV with Wake-on-LAN (this works over Ethernet when the TV is in standby). If Developer Mode expiry deleted Moonlight, it reinstalls it and restores the pairing and settings from a backup, so there's no new PIN. Then it opens Moonlight with launch params (`{"host_uuid": …, "host_app_id": …}`), so the Desktop stream starts by itself.
 - **Click again to stop.** It closes Moonlight and stops Sunshine.
 
-The launcher runs `scripts/tv-mirror.sh` straight from the repo, so re-run the installer if you move the repo. Moonlight's settings and keys are backed up to `~/.config/lg-mirror/moonlight-conf.tar.gz` on the first start (`tv-mirror backup` refreshes it). To stream a different Sunshine app, set `APP_NAME=` in `~/.config/lg-mirror/config`.
+The launcher runs `scripts/tv-mirror.sh` straight from the repo, so re-run the installer if you move the repo. Moonlight's settings and keys are backed up to `~/.config/lg-mirror/moonlight-conf.tar.gz` on every start, so pairings made from Windows are kept too. To stream a different Sunshine app, set `APP_NAME=` in `~/.config/lg-mirror/config`.
 
 ## Windows
 
