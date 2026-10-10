@@ -102,6 +102,16 @@ The laptop also boots Windows 11, and `scripts/windows/` ports the setup to it. 
 - **Turkish locale:** case-insensitive `-match '[A-Z]'` fails on a capital `I` (it lowercases to dotless ı), so config parsing uses `-cmatch`.
 - **The TV IP changed** from .108 to .92 between sessions. The router's leases are short (this laptop's had under 2 h left), so a TV left off for a few hours can come back on a new IP. When the saved IP doesn't answer, the start scripts now look up the TV's wired MAC in the neighbour table, ping the /24 to fill it if needed (about 1 s), and repoint the `ares` device with `ares-setup-device -m <device> -i host=<ip>`.
 
+## 5. A second Windows laptop (work)
+
+A Windows 11 work laptop on the home Wi-Fi was added as a third Sunshine host, "Laptop Work".
+
+- **The SSH key is per TV, not per computer.** A new computer has to fetch it once with `ares-novacom --getkey`, with Key Server on and the passphrase.
+- **Execution policy:** IT had disabled PowerShell scripts, so the npm `ares-*.ps1` shims fail. The `.cmd` shims work, and `tv-mirror.ps1` already runs node directly.
+- **Moonlight lost write access to `conf/`.** By Oct 10, `conf/` and `cache/` were back to `root:root 775`, and so was every file in the app (775 throughout). Before, they were 777 from the repacked ipk. Something on the TV re-applied modes to the whole app tree. `prisoner` can't chmod root's directories, so the start scripts now check `ls -ld conf cache`. If they aren't `drwxrwxrwx`, the scripts back up `conf/`, uninstall, reinstall the repacked ipk and restore the backup.
+- **Moonlight never discovered "Laptop Work".** The TV could fetch `http://<laptop>:47989/serverinfo`, so this isn't a firewall problem, but no host entry ever showed up. mDNS from the laptop's Wi-Fi apparently doesn't reach the TV on Ethernet. Moonlight also showed the other two hosts as offline, which looked like the problem at first. The start scripts now write this computer's `[uuid]` section and current `address` into `conf/hosts.ini` while Moonlight is closed. That also covers a stale backup restore dropping another computer's entry.
+- **`hosts.ini` can contain CRLF line endings.** The awk that edits it strips `\r` first, or the section header doesn't match and a duplicate section gets appended.
+
 ## Open items
 
 - The TV's IP is assigned by DHCP. The scripts follow it by MAC now, but a router reservation for `78:5D:C8:28:71:6E` would still save the lookup.

@@ -96,11 +96,21 @@ If you downloaded the repo as a zip, unblock the scripts first with `Get-ChildIt
    This adds **Mirror to TV** to the desktop and the Start menu. The installer asks for admin rights once. It sets Sunshine's service to start manually rather than with Windows, and lets your account start and stop it, so clicks don't bring up UAC prompts.
 8. Set up [Developer Mode renewal](#keeping-developer-mode-alive).
 
-On a dual-boot laptop, Linux and Windows are separate Sunshine hosts ("Laptop" and "Laptop (Windows)"), so pair each one. Moonlight's settings on the TV are shared by both.
+If PowerShell says running scripts is disabled (common on work laptops), call the webOS CLI as `ares-novacom.cmd`, `ares-setup-device.cmd` and so on. The shortcut isn't affected.
+
+### More than one computer
+
+Every computer (or every OS on a dual-boot laptop) is its own Sunshine host and needs its own pairing. Here that's "Laptop" (Linux), "Laptop (Windows)" and "Laptop Work". Give each a different `sunshine_name` in its Sunshine config. To add a computer:
+
+1. Do the setup steps above on it, except installing Moonlight on the TV: it's already there.
+2. Run `tv-mirror start` once (or click the shortcut). Its first start adds the computer to Moonlight's host list, even where Moonlight can't discover it by itself.
+3. Select the new computer in Moonlight on the TV and pair it with the PIN, as in step 5.
+
+Moonlight's settings on the TV are shared by all of them. Whichever computer you click on, its stream starts.
 
 ## Everyday use
 
-- **Click once to start.** It starts Sunshine and wakes the TV with Wake-on-LAN, which works over Ethernet from standby. If the router gave the TV a new IP, it finds the TV by its MAC and updates the `ares` device. If Developer Mode expired and the TV deleted Moonlight, it reinstalls it and restores the pairing and settings from a backup, so you don't need a new PIN. Then it opens Moonlight and the Desktop stream starts by itself.
+- **Click once to start.** It starts Sunshine and wakes the TV with Wake-on-LAN, which works over Ethernet from standby. If the router gave the TV a new IP, it finds the TV by its MAC and updates the `ares` device. If Developer Mode expired and the TV deleted Moonlight, or Moonlight can no longer save its settings, it reinstalls Moonlight and restores the pairing and settings from a backup, so you don't need a new PIN. It writes the computer's current IP into Moonlight's host list, then opens Moonlight and the Desktop stream starts by itself.
 - **Click again to stop.** It closes Moonlight and stops Sunshine.
 
 A start takes about 10 s on Linux and about 30 s on Windows, where Sunshine spends that long detecting displays and no config option shortens it. On Windows, setting `KEEP_SUNSHINE=1` brings it down to about 6 s. With that set, stopping leaves Sunshine idling at about 45 MB until reboot.

@@ -101,6 +101,32 @@ restore_conf() {
         && chmod 777 key && chmod 644 key/* && chmod 666 hosts.ini moonlight.ini"
 }
 
+# webOS sometimes resets the app's files to root-owned 775, and Moonlight then says "Can't find
+# a writable directory to save settings". prisoner can't chmod root's dirs, so the only fix is
+# a reinstall of the repacked ipk (conf/ and cache/ are 777 in it) plus a restore.
+conf_writable() {
+    ! tv_run "ls -ld $APP_DIR/conf $APP_DIR/cache | cut -c1-10" | grep '^d' | grep -qv '^drwxrwxrwx$'
+}
+
+# Moonlight finds hosts over mDNS, which doesn't reach the TV from every network (it doesn't
+# from a Wi-Fi laptop here), and a restored backup can carry a hosts.ini from before this PC
+# was added. So add this PC to hosts.ini, or update its address, on every start. Moonlight
+# rewrites hosts.ini on exit, so this must run while Moonlight is closed.
+register_host() {
+    local route dev ip mac name
+    route=$(ip -4 route get "$tv_ip" 2>/dev/null) || return 1
+    dev=$(grep -oP '(?<=dev )\S+' <<<"$route")
+    ip=$(grep -oP '(?<=src )\S+' <<<"$route")
+    [ -n "$ip" ] || return 1
+    mac=$(cat "/sys/class/net/$dev/address" 2>/dev/null)
+    name=$(curl -s --max-time 2 http://localhost:47989/serverinfo | grep -oP '(?<=<hostname>)[^<]+' | tr -d "'")
+    tv_run "cd $APP_DIR/conf && touch hosts.ini && awk -v id='[$1]' -v addr='$ip:47989' -v mac='$mac' -v name='${name:-$HOSTNAME}' \
+        '{ sub(/\r\$/, \"\") } /^\[/ { if (cur && !done) print \"address = \" addr; cur = (\$0 == id); if (cur) { found = 1; done = 0 } }
+        cur && /^address[ \t]*=/ { print \"address = \" addr; done = 1; next } { print }
+        END { if (cur && !done) print \"address = \" addr; if (!found) { print id; print \"mac = \" mac; print \"hostname = \" name; print \"address = \" addr } }' \
+        hosts.ini > hosts.ini.new && chmod 666 hosts.ini.new && mv -f hosts.ini.new hosts.ini && echo host-ok" | grep -q host-ok
+}
+
 app_id() {  # GameStream ID of $APP_NAME, via Sunshine's /applist with Moonlight's client cert
     local dir id=""
     if [ -f "$BACKUP" ] && dir=$(mktemp -d); then
@@ -139,20 +165,29 @@ start() {
     done
     [ -n "$apps" ] || fail "Can't reach Developer Mode on the TV. Open the Developer Mode app on the TV and check it's ON."
 
-    if ! grep -q "$APP" <<<"$apps"; then
+    installed=0
+    if grep -q "$APP" <<<"$apps"; then
+        installed=1
+        # Refresh every time so a pairing made since (e.g. from Windows) isn't lost on a reinstall.
+        # Only repair a read-only conf/ once that backup succeeded, so the pairing can't be lost.
+        if backup_conf && ! conf_writable; then
+            say "Moonlight can't save its settings. Reinstalling it on the TV…"
+            timeout 20 ares-launch -d "$DEVICE" --close "$APP" >/dev/null 2>&1
+            timeout 60 ares-install -d "$DEVICE" --remove "$APP" >/dev/null 2>&1 && installed=0
+        fi
+    fi
+    if [ "$installed" = 0 ]; then
         [ -f "$IPK" ] || fail "Moonlight is missing from the TV and $IPK doesn't exist."
         say "Reinstalling Moonlight on the TV…"
         ares-install -d "$DEVICE" "$IPK" >/dev/null 2>&1 || fail "Reinstalling Moonlight failed."
         restore_conf || say "Moonlight was reinstalled but its pairing couldn't be restored. Pair it again with the PIN shown on the TV."
-    else
-        # Refresh every time so a pairing made since (e.g. from Windows) isn't lost on a reinstall.
-        backup_conf
     fi
 
     uuid=$(host_uuid)
     [ -n "$uuid" ] || fail "Sunshine isn't responding."
     # Launch params only apply on a fresh start, so close any running instance first.
     timeout 20 ares-launch -d "$DEVICE" --close "$APP" >/dev/null 2>&1
+    register_host "$uuid"
     timeout 30 ares-launch -d "$DEVICE" "$APP" \
         -p "{\"host_uuid\":\"$uuid\",\"host_app_id\":$(app_id)}" >/dev/null 2>&1 \
         || fail "Couldn't open Moonlight on the TV."
