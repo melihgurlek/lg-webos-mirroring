@@ -203,6 +203,32 @@ function Restore-Conf {
         "&& chmod 777 key && chmod 644 key/* && chmod 666 hosts.ini moonlight.ini && echo restored-ok")) -match 'restored-ok'
 }
 
+# webOS sometimes resets the app's files to root-owned 775, and Moonlight then says "Can't find
+# a writable directory to save settings". prisoner can't chmod root's dirs, so the only fix is
+# a reinstall of the repacked ipk (conf/ and cache/ are 777 in it) plus a restore.
+function Conf-Writable {
+    $modes = (Tv-Run "ls -ld $APP_DIR/conf $APP_DIR/cache | cut -c1-10") -split "`r?`n"
+    -not ($modes | Where-Object { $_ -match '^d' -and $_ -ne 'drwxrwxrwx' })
+}
+
+# Moonlight finds hosts over mDNS, which doesn't reach the TV from every network (it doesn't
+# from a Wi-Fi laptop here), and a restored backup can carry a hosts.ini from before this PC
+# was added. So add this PC to hosts.ini, or update its address, on every start. Moonlight
+# rewrites hosts.ini on exit, so this must run while Moonlight is closed.
+function Register-Host([string]$uuid) {
+    $route = @(Find-NetRoute -RemoteIPAddress $tvIp -ErrorAction SilentlyContinue)
+    $ip = $route | Where-Object IPAddress | ForEach-Object IPAddress | Select-Object -First 1
+    if (-not $ip) { return $false }
+    $mac = ((Get-NetAdapter -InterfaceIndex $route[0].InterfaceIndex -ErrorAction SilentlyContinue).MacAddress -replace '-', ':').ToLower()
+    $xml = & $CURL -s --max-time 2 http://localhost:47989/serverinfo 2>$null | Out-String
+    $name = if ($xml -match '<hostname>([^<]+)</hostname>') { $Matches[1] -replace "'", '' } else { $env:COMPUTERNAME }
+    (Tv-Run ("cd $APP_DIR/conf && touch hosts.ini && awk -v id='[$uuid]' -v addr='${ip}:47989' -v mac='$mac' -v name='$name' " +
+        "'{ sub(/\r`$/, """") } /^\[/ { if (cur && !done) print ""address = "" addr; cur = (`$0 == id); if (cur) { found = 1; done = 0 } } " +
+        "cur && /^address[ \t]*=/ { print ""address = "" addr; done = 1; next } { print } " +
+        "END { if (cur && !done) print ""address = "" addr; if (!found) { print id; print ""mac = "" mac; print ""hostname = "" name; print ""address = "" addr } }' " +
+        "hosts.ini > hosts.ini.new && chmod 666 hosts.ini.new && mv -f hosts.ini.new hosts.ini && echo host-ok")) -match 'host-ok'
+}
+
 # --- Sunshine ----------------------------------------------------------------------------
 
 function Get-SunshineService { Get-Service $cfg.SUNSHINE_SERVICE -ErrorAction SilentlyContinue }
@@ -342,14 +368,21 @@ function Start-Mirror {
     Log 'listed TV apps'
     if (-not $apps) { Fail "Can't reach Developer Mode on the TV. Open the Developer Mode app on the TV and check it's ON." }
 
-    if ($apps -notmatch [regex]::Escape($APP)) {
+    $installed = $apps -match [regex]::Escape($APP)
+    if ($installed) {
+        # Refresh every time so a pairing made since (e.g. from Linux) isn't lost on a reinstall.
+        # Only repair a read-only conf/ once that backup succeeded, so the pairing can't be lost.
+        if ((Backup-Conf) -and -not (Conf-Writable)) {
+            Say "Moonlight can't save its settings. Reinstalling it on the TV..."
+            $null = Ares 'ares-launch' @('-d', $cfg.DEVICE, '--close', $APP) 20
+            if ((Ares 'ares-install' @('-d', $cfg.DEVICE, '--remove', $APP) 60).Code -eq 0) { $installed = $false }
+        }
+    }
+    if (-not $installed) {
         if (-not (Test-Path $cfg.IPK)) { Fail "Moonlight is missing from the TV and $($cfg.IPK) doesn't exist." }
         Say 'Reinstalling Moonlight on the TV...'
         if ((Ares 'ares-install' @('-d', $cfg.DEVICE, $cfg.IPK) 180).Code -ne 0) { Fail 'Reinstalling Moonlight failed.' }
         if (-not (Restore-Conf)) { Say "Moonlight was reinstalled but its pairing couldn't be restored. Pair it again with the PIN shown on the TV." }
-    } else {
-        # Refresh every time so a pairing made since (e.g. from Linux) isn't lost on a reinstall.
-        $null = Backup-Conf
     }
 
     $uuid = Host-Uuid
@@ -358,6 +391,7 @@ function Start-Mirror {
     # Launch params only apply on a fresh start, so close any running instance first.
     $null = Ares 'ares-launch' @('-d', $cfg.DEVICE, '--close', $APP) 20
     Log 'closed Moonlight'
+    if (Register-Host $uuid) { Log 'registered this PC in hosts.ini' } else { Log 'updating hosts.ini failed' }
     $params = '{"host_uuid":"' + $uuid + '","host_app_id":' + (App-Id) + '}'
     Log "app id looked up: $params"
     if ((Ares 'ares-launch' @('-d', $cfg.DEVICE, $APP, '-p', $params) 30).Code -ne 0) { Fail "Couldn't open Moonlight on the TV." }
